@@ -172,8 +172,8 @@ jobs:
         with:
           name: cheeseburger-kernel
           path: |
-            device/out/p4/**
             device/out/cheeseburger/**
-            device/.work/p4-unixnu/build/xnu/ios-obj/**/mach.*
+            device/out/p4/*.json
+            device/out/p4/*.log
           if-no-files-found: warn
           retention-days: 14
