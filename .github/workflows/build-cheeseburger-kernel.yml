@@ -68,6 +68,21 @@ jobs:
           mkdir -p .work/tmp out/p4
           python3 scripts/p4-fetch.py
 
+      - name: 建立 XNU 工作树（p4-prepare-xnu.py 要求 .cache/xnu-work）
+        run: |
+          set -euo pipefail
+          cd device/.work/p4-unixnu
+          mkdir -p .cache
+          if [ ! -d .cache/xnu-work/.git ]; then
+            git clone --shared refer/xnu .cache/xnu-work
+          fi
+          ls -d .cache/xnu-work/.git
+          # prelink 索引 ABI 的补丁来自这个 kit（UniXNU 的子模块默认是空的）
+          if [ -d kits/NativePrelink ] && [ -z "$(ls -A kits/NativePrelink 2>/dev/null)" ]; then
+            git clone --depth 1 https://github.com/UniXNU/NativePrelink.git kits/NativePrelink
+          fi
+          ls kits/NativePrelink/patches 2>/dev/null || true
+
       - name: 打 4K/MSM8998 补丁并生成机器头
         run: |
           set -euo pipefail
