@@ -95,47 +95,25 @@ jobs:
           path: ci
           persist-credentials: false
 
-      - name: 准备 SDK fakeroot（KERNEL_SDKROOT 与 availability.pl）
+      - name: 解包 fakeroot（仓库内自带，与 UniXNU 构建期望的布局一致）
         run: |
           set -euo pipefail
           cd device/.work/p4-unixnu
-          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
-          echo "iPhoneOS SDK: $SDK"
           rm -rf .cache/fakeroot
-          mkdir -p .cache/fakeroot/usr/local/libexec .cache/fakeroot/System/Library/Frameworks .cache/fakeroot/AppleInternal
-          # availability.pl 在 Xcode 16/18.5 SDK 里已移除，用仓库里带的副本
-          if [ -f "$SDK/usr/local/libexec/availability.pl" ]; then
-            cp "$SDK/usr/local/libexec/availability.pl" .cache/fakeroot/usr/local/libexec/
-          else
-            cp "$GITHUB_WORKSPACE/ci/ci/tools/availability.pl" .cache/fakeroot/usr/local/libexec/availability.pl
-          fi
-          chmod +x .cache/fakeroot/usr/local/libexec/availability.pl
-          [ -d "$SDK/usr/include" ] && cp -R "$SDK/usr/include" .cache/fakeroot/usr/ || true
-          MACSDK="$(xcrun --sdk macosx --show-sdk-path)"
-          echo "macOS SDK: $MACSDK"
-          # Kernel.framework 来自 iPhoneOS SDK；DriverKit/IOKit/System 来自 macOS SDK
-          for fw in Kernel IOKit DriverKit System; do
-            for base in "$SDK" "$MACSDK"; do
-              if [ -d "$base/System/Library/Frameworks/$fw.framework" ]; then
-                cp -R "$base/System/Library/Frameworks/$fw.framework" .cache/fakeroot/System/Library/Frameworks/ || true
-                echo "framework $fw <- $base"
-                break
-              fi
-            done
-          done
-          ls -d .cache/fakeroot/System/Library/Frameworks/*/ 2>/dev/null || true
-          ls .cache/fakeroot/System/Library/Frameworks/DriverKit.framework/Headers/IOReturn.h 2>/dev/null || echo "::warning::DriverKit/IOReturn.h 仍然缺失"
-          # iig 用 SDKROOT=<iphoneos SDK> 找 DriverKit，而 iPhoneOS SDK 里没有它：
-          # 在一次性 runner 上把 fakeroot 的 framework 软链进 SDK。
-          for fw in DriverKit IOKit System; do
+          mkdir -p .cache
+          tar xzf "$GITHUB_WORKSPACE/ci/ci/tools/fakeroot.tar.gz" -C .cache
+          ls -l .cache/fakeroot/usr/local/libexec/availability.pl
+          du -sh .cache/fakeroot
+          # iig 通过 SDKROOT(iphoneos SDK) 找 DriverKit，而 iPhoneOS SDK 里没有；
+          # 一次性 runner 上把 fakeroot 的 framework 软链进去。
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          for fw in DriverKit IOKit System Kernel; do
             if [ -d ".cache/fakeroot/System/Library/Frameworks/$fw.framework" ] && [ ! -e "$SDK/System/Library/Frameworks/$fw.framework" ]; then
               sudo ln -sfn "$PWD/.cache/fakeroot/System/Library/Frameworks/$fw.framework" "$SDK/System/Library/Frameworks/$fw.framework"
               echo "linked $fw.framework into iPhoneOS SDK"
             fi
           done
-          ls -l "$SDK/System/Library/Frameworks/DriverKit.framework/Headers/IOReturn.h" 2>/dev/null || echo "::warning::SDK 里仍看不到 DriverKit"
-          ls -l .cache/fakeroot/usr/local/libexec/availability.pl
-          du -sh .cache/fakeroot
+          ls -l "$SDK/System/Library/Frameworks/DriverKit.framework/Headers/IOTypes.h" | head -1
 
       - name: 检查 Xcode 工具链（iig 是 p4-build-xnu.sh 的硬断言）
         run: |
