@@ -83,6 +83,15 @@ jobs:
           fi
           ls kits/NativePrelink/patches 2>/dev/null || true
 
+      - name: 补 DriverKit 头（prepare-xnu-source.py 从旧 xnu 标签下载）
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd device/.work/p4-unixnu
+          python3 scripts/prepare-xnu-source.py
+          ls .cache/xnu-work/iokit/DriverKit/IOTypes.h .cache/xnu-work/iokit/DriverKit/IOReturn.h
+
       - name: 打 4K/MSM8998 补丁并生成机器头
         run: |
           set -euo pipefail
