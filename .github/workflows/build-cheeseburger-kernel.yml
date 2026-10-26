@@ -125,6 +125,15 @@ jobs:
           done
           ls -d .cache/fakeroot/System/Library/Frameworks/*/ 2>/dev/null || true
           ls .cache/fakeroot/System/Library/Frameworks/DriverKit.framework/Headers/IOReturn.h 2>/dev/null || echo "::warning::DriverKit/IOReturn.h 仍然缺失"
+          # iig 用 SDKROOT=<iphoneos SDK> 找 DriverKit，而 iPhoneOS SDK 里没有它：
+          # 在一次性 runner 上把 fakeroot 的 framework 软链进 SDK。
+          for fw in DriverKit IOKit System; do
+            if [ -d ".cache/fakeroot/System/Library/Frameworks/$fw.framework" ] && [ ! -e "$SDK/System/Library/Frameworks/$fw.framework" ]; then
+              sudo ln -sfn "$PWD/.cache/fakeroot/System/Library/Frameworks/$fw.framework" "$SDK/System/Library/Frameworks/$fw.framework"
+              echo "linked $fw.framework into iPhoneOS SDK"
+            fi
+          done
+          ls -l "$SDK/System/Library/Frameworks/DriverKit.framework/Headers/IOReturn.h" 2>/dev/null || echo "::warning::SDK 里仍看不到 DriverKit"
           ls -l .cache/fakeroot/usr/local/libexec/availability.pl
           du -sh .cache/fakeroot
 
