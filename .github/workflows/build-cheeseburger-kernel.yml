@@ -89,24 +89,41 @@ jobs:
           cd device
           python3 scripts/p4-prepare-xnu.py
 
+      - name: 取本仓库（CI 工具：availability.pl）
+        uses: actions/checkout@v4
+        with:
+          path: ci
+          persist-credentials: false
+
       - name: 准备 SDK fakeroot（KERNEL_SDKROOT 与 availability.pl）
         run: |
           set -euo pipefail
           cd device/.work/p4-unixnu
           SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
           echo "iPhoneOS SDK: $SDK"
-          if [ ! -f .cache/fakeroot/usr/local/libexec/availability.pl ]; then
-            rm -rf .cache/fakeroot
-            mkdir -p .cache/fakeroot/usr/local/libexec .cache/fakeroot/System/Library/Frameworks .cache/fakeroot/AppleInternal
-            cp "$SDK/usr/local/libexec/availability.pl" .cache/fakeroot/usr/local/libexec/ || true
-            [ -d "$SDK/usr/include" ] && cp -R "$SDK/usr/include" .cache/fakeroot/usr/ || true
-            for fw in Kernel.framework; do
-              [ -d "$SDK/System/Library/Frameworks/$fw" ] && \
-                cp -R "$SDK/System/Library/Frameworks/$fw" .cache/fakeroot/System/Library/Frameworks/ || true
-            done
+          rm -rf .cache/fakeroot
+          mkdir -p .cache/fakeroot/usr/local/libexec .cache/fakeroot/System/Library/Frameworks .cache/fakeroot/AppleInternal
+          # availability.pl 在 Xcode 16/18.5 SDK 里已移除，用仓库里带的副本
+          if [ -f "$SDK/usr/local/libexec/availability.pl" ]; then
+            cp "$SDK/usr/local/libexec/availability.pl" .cache/fakeroot/usr/local/libexec/
+          else
+            cp "$GITHUB_WORKSPACE/ci/ci/tools/availability.pl" .cache/fakeroot/usr/local/libexec/availability.pl
           fi
+          chmod +x .cache/fakeroot/usr/local/libexec/availability.pl
+          [ -d "$SDK/usr/include" ] && cp -R "$SDK/usr/include" .cache/fakeroot/usr/ || true
+          for fw in Kernel.framework; do
+            [ -d "$SDK/System/Library/Frameworks/$fw" ] && \
+              cp -R "$SDK/System/Library/Frameworks/$fw" .cache/fakeroot/System/Library/Frameworks/ || true
+          done
           ls -l .cache/fakeroot/usr/local/libexec/availability.pl
           du -sh .cache/fakeroot
+
+      - name: 检查 Xcode 工具链（iig 是 p4-build-xnu.sh 的硬断言）
+        run: |
+          set -euo pipefail
+          TC="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin"
+          ls -l "$TC/iig" || echo "::warning::iig 不存在，编译会失败"
+          xcodebuild -version
 
       - name: 编译 XNU（MSM8998 / 4K）
         run: |
