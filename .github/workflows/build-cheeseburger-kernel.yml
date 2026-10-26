@@ -111,10 +111,20 @@ jobs:
           fi
           chmod +x .cache/fakeroot/usr/local/libexec/availability.pl
           [ -d "$SDK/usr/include" ] && cp -R "$SDK/usr/include" .cache/fakeroot/usr/ || true
-          for fw in Kernel.framework; do
-            [ -d "$SDK/System/Library/Frameworks/$fw" ] && \
-              cp -R "$SDK/System/Library/Frameworks/$fw" .cache/fakeroot/System/Library/Frameworks/ || true
+          for fw in Kernel IOKit DriverKit System; do
+            if [ -d "$SDK/System/Library/Frameworks/$fw.framework" ]; then
+              cp -R "$SDK/System/Library/Frameworks/$fw.framework" .cache/fakeroot/System/Library/Frameworks/ || true
+              echo "framework $fw <- SDK"
+            fi
           done
+          # SDK 没有 DriverKit 时，用 xnu 源码里的 DriverKit 头补上（iig 需要）
+          DK=.cache/fakeroot/System/Library/Frameworks/DriverKit.framework
+          if [ ! -d "$DK/Headers" ]; then
+            mkdir -p "$DK/Headers"
+            cp .cache/xnu-work/iokit/DriverKit/*.h "$DK/Headers/" 2>/dev/null || true
+            echo "DriverKit <- xnu tree"
+          fi
+          ls -d .cache/fakeroot/System/Library/Frameworks/*/ 2>/dev/null || true
           ls -l .cache/fakeroot/usr/local/libexec/availability.pl
           du -sh .cache/fakeroot
 
