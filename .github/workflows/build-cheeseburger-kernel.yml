@@ -89,6 +89,25 @@ jobs:
           cd device
           python3 scripts/p4-prepare-xnu.py
 
+      - name: 准备 SDK fakeroot（KERNEL_SDKROOT 与 availability.pl）
+        run: |
+          set -euo pipefail
+          cd device/.work/p4-unixnu
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          echo "iPhoneOS SDK: $SDK"
+          if [ ! -f .cache/fakeroot/usr/local/libexec/availability.pl ]; then
+            rm -rf .cache/fakeroot
+            mkdir -p .cache/fakeroot/usr/local/libexec .cache/fakeroot/System/Library/Frameworks .cache/fakeroot/AppleInternal
+            cp "$SDK/usr/local/libexec/availability.pl" .cache/fakeroot/usr/local/libexec/ || true
+            [ -d "$SDK/usr/include" ] && cp -R "$SDK/usr/include" .cache/fakeroot/usr/ || true
+            for fw in Kernel.framework; do
+              [ -d "$SDK/System/Library/Frameworks/$fw" ] && \
+                cp -R "$SDK/System/Library/Frameworks/$fw" .cache/fakeroot/System/Library/Frameworks/ || true
+            done
+          fi
+          ls -l .cache/fakeroot/usr/local/libexec/availability.pl
+          du -sh .cache/fakeroot
+
       - name: 编译 XNU（MSM8998 / 4K）
         run: |
           set -euo pipefail
