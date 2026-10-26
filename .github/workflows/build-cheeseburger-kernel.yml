@@ -1,0 +1,99 @@
+# 在 GitHub 的 macOS runner 上复现 DinnerABC/UniXNU-cheeseburger 的 P4 内核构建。
+#
+# 用法：
+#   1. 在你自己账号下建一个空仓库（public，Actions 免费）
+#   2. 把本文件放到 .github/workflows/build-cheeseburger-kernel.yml
+#   3. 推到 main 分支
+#   4. 仓库页面 → Actions → "build cheeseburger kernel" → Run workflow
+#   5. 跑完在页面底部下载 artifact：cheeseburger-kernel
+#
+# 为什么需要这个：上游两个 workflow 都故意不编内核（P1 只编 EFI 包，
+# P2 的 kernel job 只是 readiness 预检），真实内核构建只在作者的 Mac 上做过。
+#
+# 参考：docs/P4_XNU_BUILD.md，scripts/p4-{fetch,prepare-xnu,build-xnu,export-kernel}
+name: build cheeseburger kernel
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 240
+    steps:
+      - name: 取设备仓（DinnerABC/UniXNU-cheeseburger，固定提交）
+        uses: actions/checkout@v4
+        with:
+          repository: DinnerABC/UniXNU-cheeseburger
+          ref: c5463363de7ca0ad541b8132f29c7f0a3cef718c
+          path: device
+          persist-credentials: false
+
+      - name: 取上游 UniXNU（p4-fetch.py 要求的固定提交）
+        uses: actions/checkout@v4
+        with:
+          repository: UniXNU/UniXNU
+          ref: b6ae99c17194e6a18fd819d3148e69fe405e91fc
+          path: upstream/UniXNU
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装构建工具（p4-env.sh 期望 /opt/homebrew 路径）
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: |
+          set -euo pipefail
+          brew install llvm lld make unifdef dtc cmake ninja
+          for f in llvm lld unifdef; do echo "$(brew --prefix "$f")/bin" >> "$GITHUB_PATH"; done
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - name: 记录环境（Xcode 版本决定 iig 是否存在）
+        run: |
+          set -euo pipefail
+          xcodebuild -version || true
+          xcode-select -p
+          ls /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/iig || \
+            echo "::warning::iig 不存在，p4-build-xnu.sh 的 assert 会失败"
+
+      - name: 抓取固定版本源码（xnu / libplatform / libdispatch / AvailabilityVersions）
+        run: |
+          set -euo pipefail
+          cd device
+          mkdir -p .work/tmp out/p4
+          python3 scripts/p4-fetch.py
+
+      - name: 打 4K/MSM8998 补丁并生成机器头
+        run: |
+          set -euo pipefail
+          cd device
+          python3 scripts/p4-prepare-xnu.py
+
+      - name: 编译 XNU（MSM8998 / 4K）
+        run: |
+          set -euo pipefail
+          cd device
+          bash scripts/p4-build-xnu.sh
+
+      - name: 导出内核候选
+        run: |
+          set -euo pipefail
+          cd device
+          python3 scripts/p4-export-kernel.py
+
+      - name: 上传内核与全部日志（成功或失败都传）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cheeseburger-kernel
+          path: |
+            device/out/p4/**
+            device/out/cheeseburger/**
+            device/.work/p4-unixnu/build/xnu/ios-obj/**/mach.*
+          if-no-files-found: warn
+          retention-days: 14
