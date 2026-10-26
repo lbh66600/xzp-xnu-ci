@@ -115,6 +115,29 @@ jobs:
           done
           ls -l "$SDK/System/Library/Frameworks/DriverKit.framework/Headers/IOTypes.h" | head -1
 
+      - name: 安装 xcrun shim（让 --sdk iphoneos 指向 fakeroot，与 Linux 构建一致）
+        run: |
+          set -euo pipefail
+          SHIM="$RUNNER_TEMP/xcrun-shim"
+          mkdir -p "$SHIM"
+          cat > "$SHIM/xcrun" <<'EOF'
+          #!/bin/bash
+          # UniXNU 在 Linux 上就是这样把 SDKROOT 指到 fakeroot 的：
+          # 构建只需要 fakeroot 里的头文件和 kernel 库，不需要真 SDK。
+          FAKE="${GITHUB_WORKSPACE}/device/.work/p4-unixnu/.cache/fakeroot"
+          if [ "${1:-}" = "--sdk" ] || [ "${1:-}" = "-sdk" ]; then
+            case "${3:-}${2:-}" in
+              *--show-sdk-path|-*show-sdk-path) echo "$FAKE"; exit 0 ;;
+              *--show-sdk-version*) echo "17.0"; exit 0 ;;
+            esac
+          fi
+          exec /usr/bin/xcrun "$@"
+          EOF
+          chmod +x "$SHIM/xcrun"
+          echo "$SHIM" >> "$GITHUB_PATH"
+          echo "shim installed: $SHIM/xcrun"
+          cat "$SHIM/xcrun"
+
       - name: 检查 Xcode 工具链（iig 是 p4-build-xnu.sh 的硬断言）
         run: |
           set -euo pipefail
